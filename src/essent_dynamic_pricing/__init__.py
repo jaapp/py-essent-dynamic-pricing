@@ -7,12 +7,14 @@ from .exceptions import (
     EssentError,
     EssentResponseError,
 )
-from .models import EssentData
+from .models import EssentPrices, EnergyData, Tariff
 
 __all__ = [
     "EssentClient",
     "EssentConnectionError",
-    "EssentData",
+    "EssentPrices",
+    "EnergyData",
+    "Tariff",
     "EssentDataError",
     "EssentError",
     "EssentResponseError",

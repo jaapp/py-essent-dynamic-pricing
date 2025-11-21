@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from datetime import datetime, timezone
 from essent_dynamic_pricing.client import _normalize_unit
+from essent_dynamic_pricing.models import PriceResponse
 
 from aiohttp import ClientError
 
@@ -101,9 +102,9 @@ async def test_fetch_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     data = await client.async_get_prices()
 
-    assert data["electricity"]["min_price"] == 0.2
-    assert data["electricity"]["max_price"] == 0.25
-    assert data["gas"]["unit"] == "m³"
+    assert data.electricity.min_price == 0.2
+    assert data.electricity.max_price == 0.25
+    assert data.gas.unit == "m³"
 
 
 @pytest.mark.asyncio
@@ -155,7 +156,7 @@ async def test_missing_energy_block() -> None:
     )
     client = EssentClient(_MockSession(response))
 
-    with pytest.raises(EssentDataError, match="Response missing electricity or gas data"):
+    with pytest.raises(EssentDataError, match="Invalid data structure"):
         await client.async_get_prices()
 
 
@@ -193,8 +194,8 @@ async def test_selects_today_entry() -> None:
 
     data = await client.async_get_prices()
 
-    assert data["electricity"]["min_price"] == 0.3
-    assert data["electricity"]["tariffs_tomorrow"][0]["totalAmount"] == 0.4
+    assert data.electricity.min_price == 0.3
+    assert data.electricity.tariffs_tomorrow[0].total_amount == 0.4
 
 
 @pytest.mark.asyncio
@@ -212,7 +213,7 @@ async def test_invalid_today_structure() -> None:
     )
     client = EssentClient(_MockSession(response))
 
-    with pytest.raises(EssentDataError, match="Response missing electricity or gas data"):
+    with pytest.raises(EssentDataError, match="Invalid data structure"):
         await client.async_get_prices()
 
 
@@ -290,18 +291,31 @@ def test_normalize_unit_passthrough() -> None:
 def test_select_days_prefers_today_and_tomorrow() -> None:
     """_select_days should return today entry and next as tomorrow when available."""
     today = datetime.now(timezone.utc).date().isoformat()
-    prices = [
-        {"date": today, "value": 1},
-        {"date": "next", "value": 2},
-    ]
+    resp = PriceResponse.from_dict(
+        {
+            "prices": [
+                {
+                    "date": today,
+                    "electricity": {"unit": "kWh", "tariffs": [{"totalAmount": 1}]},
+                    "gas": {"unit": "m3", "tariffs": [{"totalAmount": 1}]},
+                },
+                {
+                    "date": "next",
+                    "electricity": {"unit": "kWh", "tariffs": [{"totalAmount": 2}]},
+                    "gas": {"unit": "m3", "tariffs": [{"totalAmount": 2}]},
+                },
+            ]
+        }
+    )
 
-    selected_today, selected_tomorrow = EssentClient._select_days(prices)
+    selected_today, selected_tomorrow = EssentClient._select_days(resp.prices)
 
-    assert selected_today["value"] == 1
-    assert selected_tomorrow["value"] == 2
+    assert selected_today.electricity.tariffs[0].total_amount == 1
+    assert selected_tomorrow is not None
+    assert selected_tomorrow.electricity.tariffs[0].total_amount == 2
 
 
 def test_select_days_invalid_structure_raises() -> None:
-    """Non-dict prices should raise a data error."""
-    with pytest.raises(EssentDataError, match="Invalid data structure for current prices"):
-        EssentClient._select_days(["bad"])  # type: ignore[list-item]
+    """Empty prices should raise a data error."""
+    with pytest.raises(EssentDataError, match="No price data available"):
+        EssentClient._select_days([])

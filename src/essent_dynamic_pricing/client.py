@@ -2,22 +2,30 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from dataclasses import asdict
+from datetime import datetime, timezone
 from http import HTTPStatus
 from typing import Any
 
 from aiohttp import ClientError, ClientResponse, ClientSession, ClientTimeout
+from mashumaro.exceptions import ExtraKeysError, InvalidFieldValue, MissingField
 
 from .exceptions import EssentConnectionError, EssentDataError, EssentResponseError
-from .models import EssentData, EssentEnergyData
+from .models import (
+    EnergyData,
+    EssentPrices,
+    PriceResponse,
+    PriceDay,
+    Tariff,
+)
 
 API_ENDPOINT = "https://www.essent.nl/api/public/tariffmanagement/dynamic-prices/v1/"
 CLIENT_TIMEOUT = ClientTimeout(total=10)
 
 
-def _tariff_sort_key(tariff: dict[str, Any]) -> str:
+def _tariff_sort_key(tariff: Tariff) -> str:
     """Sort key for tariffs based on start time."""
-    return tariff.get("startDateTime", "")
+    return tariff.start or ""
 
 
 def _normalize_unit(unit: str) -> str:
@@ -45,7 +53,7 @@ class EssentClient:
         self._endpoint = endpoint
         self._timeout = timeout
 
-    async def async_get_prices(self) -> EssentData:
+    async def async_get_prices(self) -> EssentPrices:
         """Fetch and normalize Essent dynamic pricing data."""
         response = await self._request()
         body = await response.text()
@@ -56,34 +64,32 @@ class EssentClient:
             )
 
         try:
-            data = await response.json()
+            price_response = PriceResponse.from_dict(await response.json())
+        except (MissingField, InvalidFieldValue, ExtraKeysError) as err:
+            raise EssentDataError("Invalid data structure for current prices") from err
         except ValueError as err:
             raise EssentResponseError("Invalid JSON received from Essent API") from err
 
-        prices = data.get("prices") or []
-        if not prices:
+        if not price_response.prices:
             raise EssentDataError("No price data available")
 
-        today, tomorrow = self._select_days(prices)
+        today, tomorrow = self._select_days(price_response.prices)
 
-        electricity_block = today.get("electricity")
-        gas_block = today.get("gas")
-
-        if not isinstance(electricity_block, dict) or not isinstance(gas_block, dict):
+        if today.electricity is None or today.gas is None:
             raise EssentDataError("Response missing electricity or gas data")
 
-        return {
-            "electricity": self._normalize_energy_block(
-                electricity_block,
+        return EssentPrices(
+            electricity=self._normalize_energy_block(
+                today.electricity,
                 "electricity",
-                tomorrow.get("electricity") if isinstance(tomorrow, dict) else None,
+                tomorrow.electricity if tomorrow else None,
             ),
-            "gas": self._normalize_energy_block(
-                gas_block,
+            gas=self._normalize_energy_block(
+                today.gas,
                 "gas",
-                tomorrow.get("gas") if isinstance(tomorrow, dict) else None,
+                tomorrow.gas if tomorrow else None,
             ),
-        }
+        )
 
     async def _request(self) -> ClientResponse:
         """Perform the HTTP request."""
@@ -98,64 +104,56 @@ class EssentClient:
 
     @staticmethod
     def _select_days(
-        prices: list[dict[str, Any]],
-    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        prices: list[PriceDay],
+    ) -> tuple[PriceDay, PriceDay | None]:
         """Find entries for today and tomorrow from the price list."""
+        if not prices:
+            raise EssentDataError("No price data available")
+
         current_date = datetime.now(timezone.utc).astimezone().date().isoformat()
-        dict_prices = [price for price in prices if isinstance(price, dict)]
-        if not dict_prices:
-            raise EssentDataError("Invalid data structure for current prices")
+        today_index = 0
+        for idx, price in enumerate(prices):
+            if price.date == current_date:
+                today_index = idx
+                break
 
-        today = next(
-            (price for price in dict_prices if price.get("date") == current_date),
-            dict_prices[0],
-        )
-
-        tomorrow: dict[str, Any] | None = None
-        today_index = dict_prices.index(today)
-        if today_index + 1 < len(dict_prices):
-            tomorrow = dict_prices[today_index + 1]
+        today = prices[today_index]
+        tomorrow: PriceDay | None = None
+        if today_index + 1 < len(prices):
+            tomorrow = prices[today_index + 1]
 
         return today, tomorrow
 
     def _normalize_energy_block(
         self,
-        data: dict[str, Any],
+        data: Any,
         energy_type: str,
-        tomorrow: dict[str, Any] | None,
-    ) -> EssentEnergyData:
+        tomorrow: Any | None,
+    ) -> EnergyData:
         """Normalize the energy block into the client format."""
-        tariffs_today = sorted(
-            data.get("tariffs", []),
-            key=_tariff_sort_key,
-        )
+        tariffs_today = sorted(data.tariffs, key=_tariff_sort_key)
         if not tariffs_today:
             raise EssentDataError(f"No tariffs found for {energy_type}")
 
-        tariffs_tomorrow: list[dict[str, Any]] = []
-        if tomorrow:
-            tariffs_tomorrow = sorted(
-                tomorrow.get("tariffs", []),
-                key=_tariff_sort_key,
-            )
-        unit = (data.get("unitOfMeasurement") or data.get("unit") or "").strip()
+        tariffs_tomorrow = sorted(tomorrow.tariffs, key=_tariff_sort_key) if tomorrow else []
+        unit_raw = (data.unit_of_measurement or data.unit or "").strip()
 
         amounts = [
             float(total)
             for tariff in tariffs_today
-            if (total := tariff.get("totalAmount")) is not None
+            if (total := tariff.total_amount) is not None
         ]
         if not amounts:
             raise EssentDataError(f"No usable tariff values for {energy_type}")
 
-        if not unit:
+        if not unit_raw:
             raise EssentDataError(f"No unit provided for {energy_type}")
 
-        return {
-            "tariffs": tariffs_today,
-            "tariffs_tomorrow": tariffs_tomorrow,
-            "unit": _normalize_unit(unit),
-            "min_price": min(amounts),
-            "avg_price": sum(amounts) / len(amounts),
-            "max_price": max(amounts),
-        }
+        return EnergyData(
+            tariffs=tariffs_today,
+            tariffs_tomorrow=tariffs_tomorrow,
+            unit=_normalize_unit(unit_raw),
+            min_price=min(amounts),
+            avg_price=sum(amounts) / len(amounts),
+            max_price=max(amounts),
+        )
