@@ -6,7 +6,7 @@ import asyncio
 from typing import Any
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from essent_dynamic_pricing.client import _normalize_unit
 from essent_dynamic_pricing.models import PriceResponse
 
@@ -156,7 +156,7 @@ async def test_missing_energy_block() -> None:
     )
     client = EssentClient(_MockSession(response))
 
-    with pytest.raises(EssentDataError, match="Invalid data structure"):
+    with pytest.raises(EssentDataError, match="Response missing electricity data"):
         await client.async_get_prices()
 
 
@@ -196,6 +196,45 @@ async def test_selects_today_entry() -> None:
 
     assert data.electricity.min_price == 0.3
     assert data.electricity.tariffs_tomorrow[0].total_amount == 0.4
+    assert data.gas.tariffs_tomorrow[0].total_amount == 1.0
+
+
+@pytest.mark.asyncio
+async def test_missing_gas_for_future_day() -> None:
+    """Missing gas for a future day should not block electricity data."""
+    today = datetime.now(timezone.utc).date()
+    tomorrow = today + timedelta(days=1)
+    response = _MockResponse(
+        status=200,
+        body={
+            "prices": [
+                {
+                    "date": today.isoformat(),
+                    "electricity": {
+                        "tariffs": [{"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.3}],
+                        "unitOfMeasurement": "kWh",
+                    },
+                    "gas": {
+                        "tariffs": [{"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.9}],
+                        "unit": "m3",
+                    },
+                },
+                {
+                    "date": tomorrow.isoformat(),
+                    "electricity": {
+                        "tariffs": [{"startDateTime": "2025-11-17T00:00:00", "totalAmount": 0.4}],
+                        "unitOfMeasurement": "kWh",
+                    },
+                },
+            ]
+        },
+    )
+    client = EssentClient(_MockSession(response))
+
+    data = await client.async_get_prices()
+
+    assert data.electricity.tariffs_tomorrow[0].total_amount == 0.4
+    assert data.gas.tariffs_tomorrow == []
 
 
 @pytest.mark.asyncio

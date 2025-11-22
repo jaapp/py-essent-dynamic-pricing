@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 from http import HTTPStatus
-from typing import Any
 
 from aiohttp import ClientError, ClientResponse, ClientSession, ClientTimeout
 from mashumaro.exceptions import ExtraKeysError, InvalidFieldValue, MissingField
 
 from .exceptions import EssentConnectionError, EssentDataError, EssentResponseError
 from .models import (
+    EnergyBlock,
     EnergyData,
     EssentPrices,
     PriceResponse,
@@ -75,8 +74,11 @@ class EssentClient:
 
         today, tomorrow = self._select_days(price_response.prices)
 
-        if today.electricity is None or today.gas is None:
-            raise EssentDataError("Response missing electricity or gas data")
+        if today.electricity is None:
+            raise EssentDataError("Response missing electricity data")
+
+        if today.gas is None:
+            raise EssentDataError("Response missing gas data")
 
         return EssentPrices(
             electricity=self._normalize_energy_block(
@@ -126,11 +128,14 @@ class EssentClient:
 
     def _normalize_energy_block(
         self,
-        data: Any,
+        data: EnergyBlock | None,
         energy_type: str,
-        tomorrow: Any | None,
+        tomorrow: EnergyBlock | None,
     ) -> EnergyData:
         """Normalize the energy block into the client format."""
+        if data is None:
+            raise EssentDataError(f"No {energy_type} data provided")
+
         tariffs_today = sorted(data.tariffs, key=_tariff_sort_key)
         if not tariffs_today:
             raise EssentDataError(f"No tariffs found for {energy_type}")

@@ -40,8 +40,8 @@ class PriceDay(DataClassDictMixin):
     """Prices for a day."""
 
     date: str
-    electricity: EnergyBlock
-    gas: EnergyBlock
+    electricity: Optional[EnergyBlock] = None
+    gas: Optional[EnergyBlock] = None
 
     class Config:
         serialize_by_alias = True
