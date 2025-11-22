@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "essent-dynamic-pricing"
-version = "0.2.0"
+version = "0.2.1"
 description = "Async client for Essent dynamic energy prices"
 readme = "README.md"
 license = {text = "MIT"}

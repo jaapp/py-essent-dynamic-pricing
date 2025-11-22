@@ -19,6 +19,9 @@ class Tariff(DataClassDictMixin):
     total_amount_vat: Optional[float] = field(default=None, metadata={"alias": "totalAmountVat"})
     groups: List[dict[str, Any]] = field(default_factory=list)
 
+    class Config:
+        serialize_by_alias = True
+
 
 @dataclass
 class EnergyBlock(DataClassDictMixin):
@@ -27,6 +30,9 @@ class EnergyBlock(DataClassDictMixin):
     tariffs: List[Tariff] = field(default_factory=list)
     unit: Optional[str] = None
     unit_of_measurement: Optional[str] = field(default=None, metadata={"alias": "unitOfMeasurement"})
+
+    class Config:
+        serialize_by_alias = True
 
 
 @dataclass
@@ -37,12 +43,18 @@ class PriceDay(DataClassDictMixin):
     electricity: EnergyBlock
     gas: EnergyBlock
 
+    class Config:
+        serialize_by_alias = True
+
 
 @dataclass
 class PriceResponse(DataClassDictMixin):
     """Top level API response."""
 
     prices: List[PriceDay]
+
+    class Config:
+        serialize_by_alias = True
 
 
 @dataclass
@@ -56,6 +68,9 @@ class EnergyData(DataClassDictMixin):
     avg_price: float
     max_price: float
 
+    class Config:
+        serialize_by_alias = True
+
 
 @dataclass
 class EssentPrices(DataClassDictMixin):
@@ -63,3 +78,6 @@ class EssentPrices(DataClassDictMixin):
 
     electricity: EnergyData
     gas: EnergyData
+
+    class Config:
+        serialize_by_alias = True
