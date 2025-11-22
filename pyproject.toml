@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "essent-dynamic-pricing"
-version = "0.2.1"
+version = "0.2.3"
 description = "Async client for Essent dynamic energy prices"
 readme = "README.md"
 license = {text = "MIT"}
@@ -26,6 +26,9 @@ test = [
 [project.urls]
 Homepage = "https://github.com/jaapp/py-essent-dynamic-pricing"
 Repository = "https://github.com/jaapp/py-essent-dynamic-pricing"
+
+[tool.hatch.build.targets.wheel]
+force-include = {"src/essent_dynamic_pricing/py.typed" = "essent_dynamic_pricing/py.typed"}
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
