@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from datetime import datetime, timedelta, timezone
@@ -63,15 +64,31 @@ def _build_prices() -> dict[str, Any]:
                 "electricity": {
                     "unitOfMeasurement": "kWh",
                     "tariffs": [
-                        {"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.2},
-                        {"startDateTime": "2025-11-16T01:00:00", "totalAmount": 0.25},
+                        {
+                            "startDateTime": "2025-11-16T00:00:00",
+                            "endDateTime": "2025-11-16T01:00:00",
+                            "totalAmount": 0.2,
+                        },
+                        {
+                            "startDateTime": "2025-11-16T01:00:00",
+                            "endDateTime": "2025-11-16T02:00:00",
+                            "totalAmount": 0.25,
+                        },
                     ],
                 },
                 "gas": {
                     "unit": "m3",
                     "tariffs": [
-                        {"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.8},
-                        {"startDateTime": "2025-11-16T01:00:00", "totalAmount": 0.82},
+                        {
+                            "startDateTime": "2025-11-16T00:00:00",
+                            "endDateTime": "2025-11-16T01:00:00",
+                            "totalAmount": 0.8,
+                        },
+                        {
+                            "startDateTime": "2025-11-16T01:00:00",
+                            "endDateTime": "2025-11-16T02:00:00",
+                            "totalAmount": 0.82,
+                        },
                     ],
                 },
             },
@@ -80,13 +97,21 @@ def _build_prices() -> dict[str, Any]:
                 "electricity": {
                     "unitOfMeasurement": "kWh",
                     "tariffs": [
-                        {"startDateTime": "2025-11-17T00:00:00", "totalAmount": 0.22},
+                        {
+                            "startDateTime": "2025-11-17T00:00:00",
+                            "endDateTime": "2025-11-17T01:00:00",
+                            "totalAmount": 0.22,
+                        },
                     ],
                 },
                 "gas": {
                     "unit": "m3",
                     "tariffs": [
-                        {"startDateTime": "2025-11-17T00:00:00", "totalAmount": 0.85},
+                        {
+                            "startDateTime": "2025-11-17T00:00:00",
+                            "endDateTime": "2025-11-17T01:00:00",
+                            "totalAmount": 0.85,
+                        },
                     ],
                 },
             },
@@ -105,6 +130,10 @@ async def test_fetch_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert data.electricity.min_price == 0.2
     assert data.electricity.max_price == 0.25
     assert data.gas.unit == "m³"
+    assert data.electricity.tariffs[0].start == datetime(
+        2025, 11, 16, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam")
+    )
+    assert data.gas.tariffs[0].start.tzinfo == ZoneInfo("Europe/Amsterdam")
 
 
 @pytest.mark.asyncio
@@ -169,22 +198,46 @@ async def test_selects_today_entry() -> None:
             {
                 "date": today,
                 "electricity": {
-                    "tariffs": [{"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.3}],
+                    "tariffs": [
+                        {
+                            "startDateTime": "2025-11-16T00:00:00",
+                            "endDateTime": "2025-11-16T01:00:00",
+                            "totalAmount": 0.3,
+                        }
+                    ],
                     "unitOfMeasurement": "kWh",
                 },
                 "gas": {
-                    "tariffs": [{"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.9}],
+                    "tariffs": [
+                        {
+                            "startDateTime": "2025-11-16T00:00:00",
+                            "endDateTime": "2025-11-16T01:00:00",
+                            "totalAmount": 0.9,
+                        }
+                    ],
                     "unit": "m3",
                 },
             },
             {
                 "date": "2025-11-17",
                 "electricity": {
-                    "tariffs": [{"startDateTime": "2025-11-17T00:00:00", "totalAmount": 0.4}],
+                    "tariffs": [
+                        {
+                            "startDateTime": "2025-11-17T00:00:00",
+                            "endDateTime": "2025-11-17T01:00:00",
+                            "totalAmount": 0.4,
+                        }
+                    ],
                     "unitOfMeasurement": "kWh",
                 },
                 "gas": {
-                    "tariffs": [{"startDateTime": "2025-11-17T00:00:00", "totalAmount": 1.0}],
+                    "tariffs": [
+                        {
+                            "startDateTime": "2025-11-17T00:00:00",
+                            "endDateTime": "2025-11-17T01:00:00",
+                            "totalAmount": 1.0,
+                        }
+                    ],
                     "unit": "m3",
                 },
             },
@@ -211,18 +264,36 @@ async def test_missing_gas_for_future_day() -> None:
                 {
                     "date": today.isoformat(),
                     "electricity": {
-                        "tariffs": [{"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.3}],
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "endDateTime": "2025-11-16T01:00:00",
+                                "totalAmount": 0.3,
+                            }
+                        ],
                         "unitOfMeasurement": "kWh",
                     },
                     "gas": {
-                        "tariffs": [{"startDateTime": "2025-11-16T00:00:00", "totalAmount": 0.9}],
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "endDateTime": "2025-11-16T01:00:00",
+                                "totalAmount": 0.9,
+                            }
+                        ],
                         "unit": "m3",
                     },
                 },
                 {
                     "date": tomorrow.isoformat(),
                     "electricity": {
-                        "tariffs": [{"startDateTime": "2025-11-17T00:00:00", "totalAmount": 0.4}],
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-17T00:00:00",
+                                "endDateTime": "2025-11-17T01:00:00",
+                                "totalAmount": 0.4,
+                            }
+                        ],
                         "unitOfMeasurement": "kWh",
                     },
                 },
@@ -288,7 +359,14 @@ async def test_no_amounts() -> None:
             "prices": [
                 {
                     "date": today,
-                    "electricity": {"tariffs": [{"startDateTime": "2025-11-16T00:00:00"}]},
+                    "electricity": {
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "endDateTime": "2025-11-16T01:00:00",
+                            }
+                        ]
+                    },
                     "gas": {"tariffs": [{"totalAmount": 0.8}], "unit": "m3"},
                 }
             ]
@@ -310,8 +388,25 @@ async def test_no_unit() -> None:
             "prices": [
                 {
                     "date": today,
-                    "electricity": {"tariffs": [{"totalAmount": 0.25}]},
-                    "gas": {"tariffs": [{"totalAmount": 0.82}], "unit": "m³"},
+                    "electricity": {
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "endDateTime": "2025-11-16T01:00:00",
+                                "totalAmount": 0.25,
+                            }
+                        ]
+                    },
+                    "gas": {
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "endDateTime": "2025-11-16T01:00:00",
+                                "totalAmount": 0.82,
+                            }
+                        ],
+                        "unit": "m³",
+                    },
                 }
             ]
         },
@@ -319,6 +414,39 @@ async def test_no_unit() -> None:
     client = EssentClient(_MockSession(response))
 
     with pytest.raises(EssentDataError, match="No unit provided for electricity"):
+        await client.async_get_prices()
+
+
+@pytest.mark.asyncio
+async def test_missing_tariff_bounds() -> None:
+    """Missing start or end should raise a data error."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    response = _MockResponse(
+        status=200,
+        body={
+            "prices": [
+                {
+                    "date": today,
+                    "electricity": {
+                        "tariffs": [{"endDateTime": "2025-11-16T01:00:00"}],
+                        "unit": "kWh",
+                    },
+                    "gas": {
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "totalAmount": 0.8,
+                            }
+                        ],
+                        "unit": "m3",
+                    },
+                }
+            ]
+        },
+    )
+    client = EssentClient(_MockSession(response))
+
+    with pytest.raises(EssentDataError, match="Tariff missing start or end for electricity"):
         await client.async_get_prices()
 
 

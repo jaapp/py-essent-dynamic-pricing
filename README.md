@@ -1,7 +1,8 @@
 # Essent dynamic pricing client
 
 Async client for Essent's public dynamic price API, returning normalized electricity
-and gas tariffs ready for Home Assistant or other consumers.
+and gas tariffs ready for Home Assistant or other consumers. Tariff start/end values
+are returned as timezone-aware datetimes in the Europe/Amsterdam timezone.
 
 ## Usage
 

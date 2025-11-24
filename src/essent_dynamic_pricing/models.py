@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, List, Optional
 
 from mashumaro.mixins.dict import DataClassDictMixin
@@ -12,8 +13,8 @@ from mashumaro.mixins.dict import DataClassDictMixin
 class Tariff(DataClassDictMixin):
     """A single tariff entry."""
 
-    start: Optional[str] = field(default=None, metadata={"alias": "startDateTime"})
-    end: Optional[str] = field(default=None, metadata={"alias": "endDateTime"})
+    start: Optional[datetime] = field(default=None, metadata={"alias": "startDateTime"})
+    end: Optional[datetime] = field(default=None, metadata={"alias": "endDateTime"})
     total_amount: Optional[float] = field(default=None, metadata={"alias": "totalAmount"})
     total_amount_ex: Optional[float] = field(default=None, metadata={"alias": "totalAmountEx"})
     total_amount_vat: Optional[float] = field(default=None, metadata={"alias": "totalAmountVat"})

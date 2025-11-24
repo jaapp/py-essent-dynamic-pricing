@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from http import HTTPStatus
+from zoneinfo import ZoneInfo
 
 from aiohttp import ClientError, ClientResponse, ClientSession, ClientTimeout
 from mashumaro.exceptions import ExtraKeysError, InvalidFieldValue, MissingField
@@ -20,11 +21,40 @@ from .models import (
 
 API_ENDPOINT = "https://www.essent.nl/api/public/tariffmanagement/dynamic-prices/v1/"
 CLIENT_TIMEOUT = ClientTimeout(total=10)
+ESSENT_TIME_ZONE = ZoneInfo("Europe/Amsterdam")
 
 
-def _tariff_sort_key(tariff: Tariff) -> str:
+def _normalize_tariff_datetime(value: datetime | None) -> datetime | None:
+    """Normalize tariff datetimes to the Essent timezone."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=ESSENT_TIME_ZONE)
+    return value.astimezone(ESSENT_TIME_ZONE)
+
+
+def _tariff_sort_key(tariff: Tariff) -> datetime:
     """Sort key for tariffs based on start time."""
-    return tariff.start or ""
+    return tariff.start or datetime.max.replace(tzinfo=timezone.utc)
+
+
+def _prepare_tariffs(tariffs: list[Tariff], energy_type: str) -> list[Tariff]:
+    """Normalize tariffs to timezone-aware datetimes and sort them."""
+    prepared: list[Tariff] = []
+    for tariff in tariffs:
+        if tariff.start is None or tariff.end is None:
+            raise EssentDataError(f"Tariff missing start or end for {energy_type}")
+        prepared.append(
+            Tariff(
+                start=_normalize_tariff_datetime(tariff.start),
+                end=_normalize_tariff_datetime(tariff.end),
+                total_amount=tariff.total_amount,
+                total_amount_ex=tariff.total_amount_ex,
+                total_amount_vat=tariff.total_amount_vat,
+                groups=list(tariff.groups),
+            )
+        )
+    return sorted(prepared, key=_tariff_sort_key)
 
 
 def _normalize_unit(unit: str) -> str:
@@ -136,11 +166,13 @@ class EssentClient:
         if data is None:
             raise EssentDataError(f"No {energy_type} data provided")
 
-        tariffs_today = sorted(data.tariffs, key=_tariff_sort_key)
+        tariffs_today = _prepare_tariffs(data.tariffs, energy_type)
         if not tariffs_today:
             raise EssentDataError(f"No tariffs found for {energy_type}")
 
-        tariffs_tomorrow = sorted(tomorrow.tariffs, key=_tariff_sort_key) if tomorrow else []
+        tariffs_tomorrow = (
+            _prepare_tariffs(tomorrow.tariffs, energy_type) if tomorrow else []
+        )
         unit_raw = (data.unit_of_measurement or data.unit or "").strip()
 
         amounts = [
