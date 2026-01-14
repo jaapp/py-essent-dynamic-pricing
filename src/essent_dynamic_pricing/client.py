@@ -19,7 +19,7 @@ from .models import (
     Tariff,
 )
 
-API_ENDPOINT = "https://www.essent.nl/api/public/tariffmanagement/dynamic-prices/v1/"
+API_ENDPOINT = "https://www.essent.nl/api/public/dynamicpricing/dynamic-prices/v1"
 CLIENT_TIMEOUT = ClientTimeout(total=10)
 ESSENT_TIME_ZONE = ZoneInfo("Europe/Amsterdam")
 
@@ -104,23 +104,31 @@ class EssentClient:
 
         today, tomorrow = self._select_days(price_response.prices)
 
-        if today.electricity is None:
-            raise EssentDataError("Response missing electricity data")
+        if today.electricity is None and today.gas is None:
+            raise EssentDataError("Response missing both electricity and gas data")
 
-        if today.gas is None:
-            raise EssentDataError("Response missing gas data")
-
-        return EssentPrices(
-            electricity=self._normalize_energy_block(
+        electricity_data = None
+        if today.electricity is not None:
+            electricity_data = self._normalize_energy_block(
                 today.electricity,
                 "electricity",
                 tomorrow.electricity if tomorrow else None,
-            ),
-            gas=self._normalize_energy_block(
+            )
+
+        gas_data = None
+        if today.gas is not None:
+            gas_data = self._normalize_energy_block(
                 today.gas,
                 "gas",
                 tomorrow.gas if tomorrow else None,
-            ),
+            )
+
+        if electricity_data is None:
+            raise EssentDataError("Response missing electricity data")
+
+        return EssentPrices(
+            electricity=electricity_data,
+            gas=gas_data,
         )
 
     async def _request(self) -> ClientResponse:

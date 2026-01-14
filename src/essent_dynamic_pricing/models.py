@@ -78,7 +78,7 @@ class EssentPrices(DataClassDictMixin):
     """Normalized Essent prices for both energy types."""
 
     electricity: EnergyData
-    gas: EnergyData
+    gas: Optional[EnergyData] = None
 
     class Config:
         serialize_by_alias = True

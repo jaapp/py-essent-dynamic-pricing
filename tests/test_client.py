@@ -176,16 +176,18 @@ async def test_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_energy_block() -> None:
-    """Response missing electricity or gas data should error."""
+async def test_missing_electricity_block() -> None:
+    """Response missing electricity should error."""
     today = datetime.now(timezone.utc).date().isoformat()
     response = _MockResponse(
         status=200,
-        body={"prices": [{"date": today, "electricity": None, "gas": {}}]},
+        body={"prices": [{"date": today, "electricity": None}]},
     )
     client = EssentClient(_MockSession(response))
 
-    with pytest.raises(EssentDataError, match="Response missing electricity data"):
+    with pytest.raises(
+        EssentDataError, match="Response missing both electricity and gas data"
+    ):
         await client.async_get_prices()
 
 
@@ -486,3 +488,81 @@ def test_select_days_invalid_structure_raises() -> None:
     """Empty prices should raise a data error."""
     with pytest.raises(EssentDataError, match="No price data available"):
         EssentClient._select_days([])
+
+
+@pytest.mark.asyncio
+async def test_electricity_only_success() -> None:
+    """Missing gas data should succeed if electricity is present."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    response = _MockResponse(
+        status=200,
+        body={
+            "prices": [
+                {
+                    "date": today,
+                    "electricity": {
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "endDateTime": "2025-11-16T01:00:00",
+                                "totalAmount": 0.3,
+                            }
+                        ],
+                        "unitOfMeasurement": "kWh",
+                    },
+                }
+            ]
+        },
+    )
+    client = EssentClient(_MockSession(response))
+
+    data = await client.async_get_prices()
+
+    assert data.electricity.min_price == 0.3
+    assert data.gas is None
+
+
+@pytest.mark.asyncio
+async def test_gas_only_fails() -> None:
+    """Missing electricity data should raise error even if gas is present."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    response = _MockResponse(
+        status=200,
+        body={
+            "prices": [
+                {
+                    "date": today,
+                    "gas": {
+                        "tariffs": [
+                            {
+                                "startDateTime": "2025-11-16T00:00:00",
+                                "endDateTime": "2025-11-16T01:00:00",
+                                "totalAmount": 0.9,
+                            }
+                        ],
+                        "unit": "m3",
+                    },
+                }
+            ]
+        },
+    )
+    client = EssentClient(_MockSession(response))
+
+    with pytest.raises(EssentDataError, match="Response missing electricity data"):
+        await client.async_get_prices()
+
+
+@pytest.mark.asyncio
+async def test_both_missing_fails() -> None:
+    """Missing both energy types should raise error."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    response = _MockResponse(
+        status=200,
+        body={"prices": [{"date": today}]},
+    )
+    client = EssentClient(_MockSession(response))
+
+    with pytest.raises(
+        EssentDataError, match="Response missing both electricity and gas data"
+    ):
+        await client.async_get_prices()
