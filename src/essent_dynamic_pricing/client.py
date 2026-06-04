@@ -137,7 +137,7 @@ class EssentClient:
             return await self._session.get(
                 self._endpoint,
                 timeout=self._timeout,
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "x-request-origin": "client"},
             )
         except ClientError as err:
             raise EssentConnectionError(f"Error communicating with API: {err}") from err
